@@ -25,19 +25,29 @@ import subprocess
 import sys
 
 PS1 = os.environ.get("PS1") or "Steam> "
-OUTPUT_END_DELIM = "\x1b[1m\n"
 
 def read_all(p, prnt=True):
-    """TODO document"""
+    """
+    Read and echo all output from SteamCMD subprocess p.
+
+    With prnt=True (the default) output from SteamCMD is echoed directly to
+    stdout. The prompt from SteamCMD is omitted.
+    This function raises a ValueError if the prompt is not matched at the end
+    of the output to prevent changes on SteamCMD's end causing undefined
+    behavior on our side.
+
+    """
+    output_end_delim = "\x1b[1m\n" # last line before prompt in steamcmd
+
     out = list()
     l = ""
 
     rl, wl, xl = select.select([p.stdout], [], [])
 
     if rl:
-        while not l.endswith(OUTPUT_END_DELIM):
+        while not l.endswith(output_end_delim):
             l = p.stdout.readline()
-            if l != OUTPUT_END_DELIM:
+            if l != output_end_delim:
                 if prnt:
                     print l,
                 out.append(l)
@@ -49,7 +59,7 @@ def read_all(p, prnt=True):
     return out
 
 def input_loop(p):
-    """TODO document"""
+    """Input loop: Read input, send it to SteamCMD and print its response."""
     def wait_and_exit(p):
         sys.exit(p.wait())
 
@@ -79,16 +89,14 @@ def input_loop(p):
                 read_all(p)
 
 class SteamCmdCompleter(object):
-    """TODO document"""
+    """Class providing readline completion functionality for SteamCMD."""
     def __init__(self, steamcmd):
-        """TODO document"""
         self.steam = steamcmd
         self.options = sorted(self._harvest_find())
 
     def complete(self, text, state):
-        """TODO document"""
+        """Readline completion function."""
         # TODO add context aware completion
-        resp = None
         if state == 0:
             if text:
                 self.matches = [s for s in self.options if
@@ -97,11 +105,9 @@ class SteamCmdCompleter(object):
                 self.matches = self.options[:]
 
         try:
-            resp = self.matches[state]
+            return self.matches[state]
         except IndexError:
-            resp = None
-
-        return resp
+            return None
 
     line_fmt = (r'^\x1b\[0m\x1b\[1m\s+'         # beginning of line
                 r'([^\x1b]+)\x1b\[0m'           # convar/cmd
@@ -109,10 +115,10 @@ class SteamCmdCompleter(object):
     find_re = re.compile(line_fmt)
 
     def _harvest_find(self):
-        """TODO document"""
+        """Harvest ConVars and Commands from SteamCMD's find command."""
         options = list()
-        def merge_options(c):
-            """TODO document"""
+        def append_options(c):
+            """Find and append options having c in them."""
             self.steam.stdin.write('find %s\n' % c)
             self.steam.stdin.flush()
 
@@ -129,10 +135,10 @@ class SteamCmdCompleter(object):
         alphabet = [chr(c) for c in xrange(97, 123)]
 
         # explicitly merge convars
-        merge_options('@')
+        append_options('@')
 
         for char in alphabet:
-            merge_options(char)
+            append_options(char)
 
         return list(set(options))
 
