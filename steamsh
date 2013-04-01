@@ -1,0 +1,164 @@
+#!/usr/bin/python2
+
+# SteamCMD wrapper w/ readline support
+# Copyright (C) 2013  Dirk Dankhoff <bluthund23@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import atexit
+import os
+import re
+import readline
+import select
+import subprocess
+import sys
+
+OUTPUT_END_DELIM = "\x1b[1m\n"
+
+def read_all(p, prnt=True):
+    """TODO document"""
+    out = list()
+    l = ""
+
+    rl, wl, xl = select.select([p.stdout], [], [])
+
+    if rl:
+        while not l.endswith(OUTPUT_END_DELIM):
+            l = p.stdout.readline()
+            if l != OUTPUT_END_DELIM:
+                if prnt:
+                    print l,
+                out.append(l)
+
+    end = p.stdout.read(10)
+    if end != "Steam>\x1b[0m":
+        raise ValueError("ERROR: found wrong prompt %s" % repr(end))
+
+    return out
+
+def input_loop(p):
+    """TODO document"""
+    def wait_and_exit(p):
+        sys.exit(p.wait())
+
+    while True:
+        try:
+            user_input = raw_input("\x1b[0mSteam> ")
+        except EOFError:
+            p.stdin.write("quit\n")
+            p.stdin.flush()
+            wait_and_exit(p)
+
+        try:
+            p.stdin.write(user_input + "\n")
+            p.stdin.flush()
+        except IOError:
+            print "Error: Could not write to pipe."
+            p.poll()
+            if p.returncode is not None:
+                print "Error: steamcmd exited with %d." % p.returncode
+            sys.exit(p.returncode)
+        else:
+            if user_input in ['exit', 'quit']:
+                wait_and_exit(p)
+            else:
+                read_all(p)
+
+class SteamCmdCompleter(object):
+    """TODO document"""
+    def __init__(self, steamcmd):
+        """TODO document"""
+        self.steam = steamcmd
+        self.options = sorted(self._harvest_find())
+
+    def complete(self, text, state):
+        """TODO document"""
+        # TODO add context aware completion
+        resp = None
+        if state == 0:
+            if text:
+                self.matches = [s for s in self.options if
+                                s and s.startswith(text)]
+            else:
+                self.matches = self.options[:]
+
+        try:
+            resp = self.matches[state]
+        except IndexError:
+            resp = None
+
+        return resp
+
+    line_fmt = (r'^\x1b\[0m\x1b\[1m\s+'         # beginning of line
+                r'([^\x1b]+)\x1b\[0m'           # convar/cmd
+                r'(?: = "([^"]*)")?\s*: (.*)$') # default value + help
+    find_re = re.compile(line_fmt)
+
+    def _harvest_find(self):
+        """TODO document"""
+        options = list()
+        def merge_options(c):
+            """TODO document"""
+            self.steam.stdin.write('find %s\n' % c)
+            self.steam.stdin.flush()
+
+            outl = read_all(self.steam, False)
+
+            for l in outl:
+                m = self.find_re.match(l)
+                try:
+                    option = m.group(1)
+                    options.append(option)
+                except AttributeError:
+                    pass
+
+        alphabet = [chr(c) for c in xrange(97, 123)]
+
+        # explicitly merge convars
+        merge_options('@')
+
+        for char in alphabet:
+            merge_options(char)
+
+        return list(set(options))
+
+# start steamcmd as subprocess
+steamcmd = subprocess.Popen("./steamcmd.sh", shell=True,
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE,
+                            bufsize=0)
+
+# get all startup output
+read_all(steamcmd)
+
+# setup readline history
+histfile = os.path.join(os.path.expanduser("~"), ".history_steamsh")
+try:
+    readline.read_history_file(histfile)
+except IOError:
+    pass
+atexit.register(readline.write_history_file, histfile)
+
+# setup readline completion
+# Dear VALVe: Why would you use @-symbols in your convars?
+completer_delims = readline.get_completer_delims().replace('@', '')
+readline.set_completer_delims(completer_delims)
+readline.set_completer(SteamCmdCompleter(steamcmd).complete)
+
+# repl
+try:
+    input_loop(steamcmd)
+except KeyboardInterrupt:
+    steamcmd.send_signal(subprocess.signal.SIGINT)
+    sys.exit(steamcmd.wait())

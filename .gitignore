@@ -1,0 +1,8 @@
+linux32/
+package/
+public/
+depotcache/
+steamcmd.sh
+steam.sh
+
+.*.sw?
