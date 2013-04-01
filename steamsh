@@ -18,13 +18,14 @@
 
 import atexit
 import os
+import pty
 import re
 import readline
 import select
 import subprocess
 import sys
 
-OUTPUT_END_DELIM = "\x1b[1m\n"
+OUTPUT_END_DELIM = "\x1b[1m\r\n"
 
 def read_all(p, prnt=True):
     """TODO document"""
@@ -134,10 +135,20 @@ class SteamCmdCompleter(object):
         return list(set(options))
 
 # start steamcmd as subprocess
-steamcmd = subprocess.Popen("./steamcmd.sh", shell=True,
-                            stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE,
-                            bufsize=0)
+pid, fd = pty.fork()
+
+if pid == 0:
+    sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
+    os.execl('./steamcmd.sh', './steamcmd.sh')
+
+class PseudoPopen(subprocess.Popen):
+    def __init__(self, pid, fd):
+        self.pid = pid
+        self.stdout = os.fdopen(fd, 'r', 0)
+        self.stdin = os.fdopen(fd, 'w', 0)
+        self.returncode = None
+
+steamcmd = PseudoPopen(pid, fd)
 
 # get all startup output
 read_all(steamcmd)
