@@ -24,6 +24,7 @@ import select
 import subprocess
 import sys
 
+PS1 = os.environ.get("PS1") or "Steam> "
 OUTPUT_END_DELIM = "\x1b[1m\n"
 
 def read_all(p, prnt=True):
@@ -53,11 +54,13 @@ def input_loop(p):
         sys.exit(p.wait())
 
     while True:
+        print "\x1b[0m" # reset formatting in case steamcmd didn't do it
         try:
-            user_input = raw_input("\x1b[0mSteam> ")
+            user_input = raw_input(PS1)
         except EOFError:
             p.stdin.write("quit\n")
             p.stdin.flush()
+            print # move shell prompt to next line on exit via <C-d>
             wait_and_exit(p)
 
         try:

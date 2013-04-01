@@ -4,8 +4,7 @@ Copy `steamsh` to the directory containing `steamcmd.sh`.
 
 # Known issues #
 
-* Output is buffered completely before being written to screen
-* History output goes bonkers when stepping over ConVars (prefixed by `@`)
+* SteamCMD's output is buffered extensively before being written to screen
 
 # License #
 
